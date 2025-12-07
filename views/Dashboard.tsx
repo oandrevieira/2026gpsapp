@@ -4,7 +4,7 @@ import { Goal } from '../types';
 import { NeonButton } from '../components/NeonButton';
 import { AntigravityBackground } from '../components/AntigravityBackground';
 import { LogOut, Settings, AlertTriangle, CheckCircle2, Trophy, Zap, RefreshCw } from 'lucide-react';
-import { END_DATE, WEIGHT_LOSS_TASKS, HYPERTROPHY_TASKS } from '../constants';
+import { END_DATE, TASK_DATABASE } from '../constants';
 
 interface Props {
   user: any;
@@ -27,7 +27,7 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
   };
 
   const calculateDailyMission = (g: Goal) => {
-    switch (g.type) {
+    switch (g.category) {
       case 'finance':
         const today = new Date();
         const diffTime = Math.abs(END_DATE.getTime() - today.getTime());
@@ -37,17 +37,17 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
         return `Economizar ou Gerar R$ ${dailyNeed.toFixed(2)}`;
       
       case 'body':
-        const list = g.daily_action === 'hypertrophy' ? HYPERTROPHY_TASKS : WEIGHT_LOSS_TASKS;
-        // Usa o dia do ano para rodar a lista ciclicamente
-        const index = getDayOfYear() % list.length;
-        return list[index];
-
       case 'mind':
-        const [habit, mins] = (g.daily_action || "|").split('|');
-        return `Executar ${habit} por ${mins} minutos sem distrações.`;
+        // Lógica de Inteligência (Fake AI)
+        if (g.focus_area && TASK_DATABASE[g.focus_area]) {
+          const tasks = TASK_DATABASE[g.focus_area];
+          const index = getDayOfYear() % tasks.length;
+          return tasks[index];
+        }
+        return "Mantenha o foco no objetivo.";
 
       case 'custom':
-        return g.daily_action;
+        return g.custom_action || "Ação diária indefinida";
         
       default:
         return "Avançar 1% hoje.";
@@ -101,13 +101,11 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
         
         // Percent logic
         let percent = 0;
-        if (data.type === 'finance') {
+        if (data.category === 'finance') {
             percent = data.target_value > 0 
             ? Math.min(100, (data.current_value / data.target_value) * 100) 
             : 0;
         } else {
-            // Para outras metas, consideramos o target_value como 365 dias (consistência)
-            // Current value conta os dias feitos
              percent = (data.current_value / 365) * 100;
         }
         
@@ -132,7 +130,7 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
     setIsCheckedToday(true); 
 
     let increment = 0;
-    if (goal.type === 'finance') {
+    if (goal.category === 'finance') {
         const today = new Date();
         const diffTime = Math.abs(END_DATE.getTime() - today.getTime());
         const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
@@ -146,7 +144,7 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
     
     // Atualizar barra visualmente
     let newPercent = 0;
-    if (goal.type === 'finance') {
+    if (goal.category === 'finance') {
         newPercent = goal.target_value > 0 ? Math.min(100, (newCurrent / goal.target_value) * 100) : 0;
     } else {
         newPercent = (newCurrent / 365) * 100;
@@ -193,9 +191,9 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
             <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-cyber-neon animate-pulse"></span>
                 <p className="text-[10px] text-cyber-text uppercase tracking-widest">
-                  {goal.type === 'finance' ? 'Protocolo Financeiro' : 
-                   goal.type === 'body' ? 'Bio-Hacking Ativo' : 
-                   goal.type === 'mind' ? 'Cognição Aumentada' : 'Protocolo Custom'}
+                  {goal.category === 'finance' ? 'Protocolo Financeiro' : 
+                   goal.category === 'body' ? 'Bio-Hacking Ativo' : 
+                   goal.category === 'mind' ? 'Cognição Aumentada' : 'Protocolo Custom'}
                 </p>
             </div>
         </div>
@@ -240,7 +238,7 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
                     </div>
                 </div>
                 <p className="text-xs text-right text-gray-500 font-mono">
-                    {goal.type === 'finance' 
+                    {goal.category === 'finance' 
                         ? `ALVO: R$ ${goal.target_value.toLocaleString('pt-BR')} | ATUAL: R$ ${Math.floor(goal.current_value).toLocaleString('pt-BR')}`
                         : `DIAS: 365 | FEITOS: ${Math.floor(goal.current_value)}`
                     }
@@ -289,11 +287,11 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
                     {isCheckedToday ? '/// MISSÃO CUMPRIDA. SYNC COMPLETE.' : '/// AGUARDANDO EXECUÇÃO'}
                 </p>
                 
-                {/* Health Rotation Indicator */}
-                {goal.type === 'body' && !isCheckedToday && (
+                {/* AI / Focus Area Indicator */}
+                {(goal.category === 'body' || goal.category === 'mind') && !isCheckedToday && (
                     <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[10px] text-gray-600">
                         <RefreshCw className="w-3 h-3" />
-                        <span>IA ROTATION ACTIVE</span>
+                        <span>IA: {goal.focus_area?.toUpperCase()}</span>
                     </div>
                 )}
             </div>

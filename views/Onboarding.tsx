@@ -22,15 +22,19 @@ export const OnboardingView: React.FC<Props> = ({ onComplete }) => {
   const [financeTarget, setFinanceTarget] = useState('');
   const [financeCurrent, setFinanceCurrent] = useState('0');
   
-  const [bodyFocus, setBodyFocus] = useState<'lose_weight' | 'hypertrophy'>('lose_weight');
-  
-  const [mindHabit, setMindHabit] = useState('');
-  const [mindMinutes, setMindMinutes] = useState('');
+  // Focus Area serve para Body (weight_loss/muscle) e Mind (anxiety/study)
+  const [focusArea, setFocusArea] = useState<string>(''); 
   
   const [customAction, setCustomAction] = useState('');
 
   const handleSubmit = async () => {
     if (!title) return alert("Defina um título para sua meta.");
+    
+    // Validação básica
+    if (category === 'body' && !focusArea) return alert("Selecione um foco para o corpo.");
+    if (category === 'mind' && !focusArea) return alert("Selecione um foco para a mente.");
+    if (category === 'custom' && !customAction) return alert("Defina a ação diária.");
+
     setLoading(true);
 
     try {
@@ -39,44 +43,54 @@ export const OnboardingView: React.FC<Props> = ({ onComplete }) => {
 
       let targetVal = 0;
       let currentVal = 0;
-      let finalDailyAction = '';
+      let finalFocusArea = null;
+      let finalCustomAction = null;
 
       // Mapeamento de Dados baseado na Categoria
       switch (category) {
         case 'finance':
           targetVal = Number(financeTarget);
           currentVal = Number(financeCurrent);
-          finalDailyAction = 'SAVE'; // Placeholder
           break;
         case 'body':
-          targetVal = 365; // Meta de consistência
-          finalDailyAction = bodyFocus; // 'lose_weight' | 'hypertrophy'
+          targetVal = 365; 
+          finalFocusArea = focusArea; // 'weight_loss' | 'muscle'
           break;
         case 'mind':
-          targetVal = 365; // Meta de consistência
-          finalDailyAction = `${mindHabit}|${mindMinutes}`; // Formato: "Ler|30"
+          targetVal = 365;
+          finalFocusArea = focusArea; // 'anxiety' | 'study'
           break;
         case 'custom':
-          targetVal = 365; // Meta de consistência
-          finalDailyAction = customAction;
+          targetVal = 365;
+          finalCustomAction = customAction;
           break;
       }
 
-      const { error } = await supabase.from('goals').insert({
+      // Payload exato para o Supabase
+      const payload = {
         user_id: user.id,
         title: title,
-        type: category,
+        category: category,
+        focus_area: finalFocusArea,
         target_value: targetVal,
         current_value: currentVal,
-        daily_action: finalDailyAction
-      });
+        custom_action: finalCustomAction
+      };
 
-      if (error) throw error;
+      console.log("Enviando Payload:", payload);
+
+      const { error } = await supabase.from('goals').insert(payload);
+
+      if (error) {
+        console.error("Erro Supabase Detalhado:", error);
+        throw error;
+      }
+      
       onComplete();
 
-    } catch (error) {
-      console.error(error);
-      alert('Erro na gravação de dados. Tente novamente.');
+    } catch (error: any) {
+      console.error("Erro geral:", error);
+      alert(`Erro ao salvar: ${error.message || error.details || 'Verifique o console'}`);
     } finally {
       setLoading(false);
     }
@@ -84,8 +98,8 @@ export const OnboardingView: React.FC<Props> = ({ onComplete }) => {
 
   const categories = [
     { id: 'finance', label: 'FINANCEIRO', icon: <DollarSign className="w-6 h-6" />, desc: 'Acumular R$ ou Pagar Dívidas' },
-    { id: 'body', label: 'CORPO / SAÚDE', icon: <Dumbbell className="w-6 h-6" />, desc: 'Emagrecer ou Hipertrofia' },
-    { id: 'mind', label: 'MENTE / ESTUDO', icon: <Brain className="w-6 h-6" />, desc: 'Hábito diário fixo' },
+    { id: 'body', label: 'CORPO / SAÚDE', icon: <Dumbbell className="w-6 h-6" />, desc: 'Bio-Hacking e Estética' },
+    { id: 'mind', label: 'MENTE / FOCO', icon: <Brain className="w-6 h-6" />, desc: 'Ansiedade ou Estudos' },
     { id: 'custom', label: 'CUSTOM', icon: <Rocket className="w-6 h-6" />, desc: 'Objetivo livre' },
   ];
 
@@ -110,7 +124,7 @@ export const OnboardingView: React.FC<Props> = ({ onComplete }) => {
           <div className="animate-fade-in-up space-y-6">
             <FuturisticInput 
               label="Nome da Missão (Título)"
-              placeholder="Ex: Liberdade Financeira, Shape 2026..."
+              placeholder="Ex: Liberdade, Shape, Aprovação..."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               autoFocus
@@ -120,7 +134,11 @@ export const OnboardingView: React.FC<Props> = ({ onComplete }) => {
               {categories.map((cat) => (
                 <button
                   key={cat.id}
-                  onClick={() => setCategory(cat.id as GoalCategory)}
+                  onClick={() => {
+                    setCategory(cat.id as GoalCategory);
+                    // Reset sub-states
+                    setFocusArea('');
+                  }}
                   className={`p-6 rounded-lg border text-left transition-all flex flex-col gap-3 group relative overflow-hidden ${
                     category === cat.id 
                     ? 'bg-cyber-neon/10 border-cyber-neon shadow-[0_0_20px_rgba(0,255,156,0.15)]' 
@@ -159,15 +177,14 @@ export const OnboardingView: React.FC<Props> = ({ onComplete }) => {
         {step === 2 && (
           <div className="animate-fade-in-up space-y-8 bg-cyber-dark/50 p-6 rounded-lg border border-cyber-gray backdrop-blur-md">
             
-            {/* --- FORMULÁRIO FINANCEIRO --- */}
+            {/* --- FINANCEIRO --- */}
             {category === 'finance' && (
               <>
                 <div className="flex items-center gap-3 text-cyber-neon mb-2">
                    <DollarSign />
                    <h3 className="text-xl font-bold uppercase">Parâmetros Financeiros</h3>
                 </div>
-                <p className="text-xs text-gray-500 mb-6">O sistema calculará automaticamente quanto você precisa economizar por dia baseado nos dias restantes do ano.</p>
-                
+                <p className="text-xs text-gray-500 mb-6">O sistema calculará automaticamente a meta diária.</p>
                 <FuturisticInput 
                   label="Valor Alvo Final (R$)"
                   type="number"
@@ -185,7 +202,7 @@ export const OnboardingView: React.FC<Props> = ({ onComplete }) => {
               </>
             )}
 
-            {/* --- FORMULÁRIO CORPO/SAÚDE --- */}
+            {/* --- CORPO / SAÚDE --- */}
             {category === 'body' && (
               <>
                  <div className="flex items-center gap-3 text-cyber-neon mb-2">
@@ -193,21 +210,20 @@ export const OnboardingView: React.FC<Props> = ({ onComplete }) => {
                    <h3 className="text-xl font-bold uppercase">Bio-Hacking Diário</h3>
                 </div>
                 <p className="text-xs text-gray-500 mb-6">
-                  O sistema usará uma "IA Simulada" para rotacionar tarefas diárias otimizadas baseadas no dia do ano. Você não precisa decidir o que fazer.
+                  IA Simulada rotacionará tarefas diárias otimizadas.
                 </p>
-
                 <div className="space-y-4">
-                  <label className="block text-cyber-neon text-[10px] uppercase tracking-widest font-bold">Qual o foco principal?</label>
+                  <label className="block text-cyber-neon text-[10px] uppercase tracking-widest font-bold">Qual o foco?</label>
                   <div className="grid grid-cols-2 gap-4">
                     <button 
-                      onClick={() => setBodyFocus('lose_weight')}
-                      className={`p-4 border rounded text-center uppercase text-xs font-bold tracking-widest ${bodyFocus === 'lose_weight' ? 'bg-cyber-neon text-black border-cyber-neon' : 'border-cyber-gray text-gray-400'}`}
+                      onClick={() => setFocusArea('weight_loss')}
+                      className={`p-4 border rounded text-center uppercase text-xs font-bold tracking-widest ${focusArea === 'weight_loss' ? 'bg-cyber-neon text-black border-cyber-neon' : 'border-cyber-gray text-gray-400'}`}
                     >
                       Emagrecimento
                     </button>
                     <button 
-                      onClick={() => setBodyFocus('hypertrophy')}
-                      className={`p-4 border rounded text-center uppercase text-xs font-bold tracking-widest ${bodyFocus === 'hypertrophy' ? 'bg-cyber-neon text-black border-cyber-neon' : 'border-cyber-gray text-gray-400'}`}
+                      onClick={() => setFocusArea('muscle')}
+                      className={`p-4 border rounded text-center uppercase text-xs font-bold tracking-widest ${focusArea === 'muscle' ? 'bg-cyber-neon text-black border-cyber-neon' : 'border-cyber-gray text-gray-400'}`}
                     >
                       Hipertrofia
                     </button>
@@ -216,47 +232,47 @@ export const OnboardingView: React.FC<Props> = ({ onComplete }) => {
               </>
             )}
 
-            {/* --- FORMULÁRIO MENTE/ESTUDO --- */}
+            {/* --- MENTE / ESTUDO (Atualizado) --- */}
             {category === 'mind' && (
               <>
                 <div className="flex items-center gap-3 text-cyber-neon mb-2">
                    <Brain />
-                   <h3 className="text-xl font-bold uppercase">Hábito Cognitivo</h3>
+                   <h3 className="text-xl font-bold uppercase">Protocolo Mental</h3>
                 </div>
                 <p className="text-xs text-gray-500 mb-6">
-                  Defina uma rotina fixa. A repetição gera a excelência.
+                  Escolha o algoritmo de desenvolvimento pessoal.
                 </p>
-
-                <FuturisticInput 
-                  label="Qual o Hábito?"
-                  placeholder="Ex: Ler, Meditar, Estudar Inglês..."
-                  value={mindHabit}
-                  onChange={(e) => setMindHabit(e.target.value)}
-                />
-                <FuturisticInput 
-                  label="Tempo Diário (Minutos)"
-                  type="number"
-                  placeholder="Ex: 30"
-                  value={mindMinutes}
-                  onChange={(e) => setMindMinutes(e.target.value)}
-                />
+                
+                <div className="space-y-4">
+                  <label className="block text-cyber-neon text-[10px] uppercase tracking-widest font-bold">Qual o objetivo?</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button 
+                      onClick={() => setFocusArea('anxiety')}
+                      className={`p-4 border rounded text-center uppercase text-xs font-bold tracking-widest ${focusArea === 'anxiety' ? 'bg-cyber-neon text-black border-cyber-neon' : 'border-cyber-gray text-gray-400'}`}
+                    >
+                      Anti-Ansiedade (Zen)
+                    </button>
+                    <button 
+                      onClick={() => setFocusArea('study')}
+                      className={`p-4 border rounded text-center uppercase text-xs font-bold tracking-widest ${focusArea === 'study' ? 'bg-cyber-neon text-black border-cyber-neon' : 'border-cyber-gray text-gray-400'}`}
+                    >
+                      Produtividade / Estudo
+                    </button>
+                  </div>
+                </div>
               </>
             )}
 
-            {/* --- FORMULÁRIO CUSTOM --- */}
+            {/* --- CUSTOM --- */}
             {category === 'custom' && (
               <>
                  <div className="flex items-center gap-3 text-cyber-neon mb-2">
                    <Rocket />
                    <h3 className="text-xl font-bold uppercase">Protocolo Livre</h3>
                 </div>
-                <p className="text-xs text-gray-500 mb-6">
-                  Você define a regra do jogo.
-                </p>
-
                 <FuturisticInput 
                   label="Qual a Ação Única Diária?"
-                  placeholder="Ex: Escrever 500 palavras, Fazer 1 venda..."
+                  placeholder="Ex: Ler 10 páginas, Ligar para 5 clientes..."
                   value={customAction}
                   onChange={(e) => setCustomAction(e.target.value)}
                 />
