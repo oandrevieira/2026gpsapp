@@ -3,8 +3,8 @@ import { supabase } from '../supabaseClient';
 import { Goal } from '../types';
 import { NeonButton } from '../components/NeonButton';
 import { AntigravityBackground } from '../components/AntigravityBackground';
-import { LogOut, Settings, AlertTriangle, CheckCircle2, Trophy, Zap } from 'lucide-react';
-import { END_DATE } from '../constants';
+import { LogOut, Settings, AlertTriangle, CheckCircle2, Trophy, Zap, RefreshCw } from 'lucide-react';
+import { END_DATE, WEIGHT_LOSS_TASKS, HYPERTROPHY_TASKS } from '../constants';
 
 interface Props {
   user: any;
@@ -15,8 +15,45 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const [isCheckedToday, setIsCheckedToday] = useState(false);
   const [animatedPercent, setAnimatedPercent] = useState(0);
+  const [dailyMissionText, setDailyMissionText] = useState('');
   
-  // Confetti trigger
+  // Helpers
+  const getDayOfYear = () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), 0, 0);
+    const diff = (now.getTime() - start.getTime()) + ((start.getTimezoneOffset() - now.getTimezoneOffset()) * 60 * 1000);
+    const oneDay = 1000 * 60 * 60 * 24;
+    return Math.floor(diff / oneDay);
+  };
+
+  const calculateDailyMission = (g: Goal) => {
+    switch (g.type) {
+      case 'finance':
+        const today = new Date();
+        const diffTime = Math.abs(END_DATE.getTime() - today.getTime());
+        const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+        const remaining = g.target_value - g.current_value;
+        const dailyNeed = remaining / diffDays;
+        return `Economizar ou Gerar R$ ${dailyNeed.toFixed(2)}`;
+      
+      case 'body':
+        const list = g.daily_action === 'hypertrophy' ? HYPERTROPHY_TASKS : WEIGHT_LOSS_TASKS;
+        // Usa o dia do ano para rodar a lista ciclicamente
+        const index = getDayOfYear() % list.length;
+        return list[index];
+
+      case 'mind':
+        const [habit, mins] = (g.daily_action || "|").split('|');
+        return `Executar ${habit} por ${mins} minutos sem distrações.`;
+
+      case 'custom':
+        return g.daily_action;
+        
+      default:
+        return "Avançar 1% hoje.";
+    }
+  };
+
   const triggerCelebration = () => {
     if (window.confetti) {
       window.confetti({
@@ -28,14 +65,13 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
       });
     }
     
-    // Better beep for success (short synthesized tone)
     try {
         const context = new (window.AudioContext || (window as any).webkitAudioContext)();
         const oscillator = context.createOscillator();
         const gainNode = context.createGain();
         oscillator.connect(gainNode);
         gainNode.connect(context.destination);
-        oscillator.type = 'sawtooth'; // More futuristic sound
+        oscillator.type = 'sawtooth';
         oscillator.frequency.setValueAtTime(440, context.currentTime);
         oscillator.frequency.exponentialRampToValueAtTime(880, context.currentTime + 0.1);
         gainNode.gain.setValueAtTime(0.1, context.currentTime);
@@ -57,16 +93,24 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
       
       if (data) {
         setGoal(data);
+        setDailyMissionText(calculateDailyMission(data));
+
         const todayStr = new Date().toISOString().split('T')[0];
         const lastCompleted = data.last_completed_at ? data.last_completed_at.split('T')[0] : null;
         setIsCheckedToday(todayStr === lastCompleted);
         
-        // Calculate percentage for animation
-        const percent = data.target_value > 0 
+        // Percent logic
+        let percent = 0;
+        if (data.type === 'finance') {
+            percent = data.target_value > 0 
             ? Math.min(100, (data.current_value / data.target_value) * 100) 
             : 0;
+        } else {
+            // Para outras metas, consideramos o target_value como 365 dias (consistência)
+            // Current value conta os dias feitos
+             percent = (data.current_value / 365) * 100;
+        }
         
-        // Small delay to trigger animation after mount
         setTimeout(() => setAnimatedPercent(percent), 100);
       }
     } catch (error) {
@@ -85,22 +129,28 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
     if (!goal || isCheckedToday) return;
 
     triggerCelebration();
-    setIsCheckedToday(true); // Optimistic update
+    setIsCheckedToday(true); 
 
-    // Calculate increment
     let increment = 0;
-    if (goal.target_value > 0) {
+    if (goal.type === 'finance') {
         const today = new Date();
         const diffTime = Math.abs(END_DATE.getTime() - today.getTime());
         const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
         const remaining = goal.target_value - goal.current_value;
         increment = remaining / diffDays;
     } else {
-        increment = 1; 
+        increment = 1; // Soma 1 dia de consistência
     }
 
     const newCurrent = goal.current_value + increment;
-    const newPercent = goal.target_value > 0 ? Math.min(100, (newCurrent / goal.target_value) * 100) : 0;
+    
+    // Atualizar barra visualmente
+    let newPercent = 0;
+    if (goal.type === 'finance') {
+        newPercent = goal.target_value > 0 ? Math.min(100, (newCurrent / goal.target_value) * 100) : 0;
+    } else {
+        newPercent = (newCurrent / 365) * 100;
+    }
     setAnimatedPercent(newPercent);
 
     try {
@@ -124,7 +174,7 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
     <div className="h-screen flex flex-col items-center justify-center bg-cyber-black text-cyber-neon font-mono relative">
         <AntigravityBackground />
         <div className="w-16 h-16 border-4 border-cyber-neon border-t-transparent rounded-full animate-spin mb-4 relative z-10"></div>
-        <span className="animate-pulse tracking-widest relative z-10">CARREGANDO INTERFACE...</span>
+        <span className="animate-pulse tracking-widest relative z-10">CARREGANDO DADOS...</span>
     </div>
   );
   
@@ -133,7 +183,6 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
   return (
     <div className="min-h-screen bg-cyber-black flex flex-col relative overflow-hidden">
       
-      {/* Backgrounds */}
       <AntigravityBackground />
       <div className="absolute inset-0 cyber-grid opacity-20 pointer-events-none z-0"></div>
 
@@ -143,7 +192,11 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
             <h1 className="text-xl font-mono font-bold text-white tracking-tighter">OLÁ, <span className="text-cyber-neon drop-shadow-lg">{user.email?.split('@')[0].toUpperCase()}</span></h1>
             <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-cyber-neon animate-pulse"></span>
-                <p className="text-[10px] text-cyber-text uppercase tracking-widest">Protocolo Ativo 2026</p>
+                <p className="text-[10px] text-cyber-text uppercase tracking-widest">
+                  {goal.type === 'finance' ? 'Protocolo Financeiro' : 
+                   goal.type === 'body' ? 'Bio-Hacking Ativo' : 
+                   goal.type === 'mind' ? 'Cognição Aumentada' : 'Protocolo Custom'}
+                </p>
             </div>
         </div>
         <div className="flex gap-4">
@@ -161,14 +214,14 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
                 <Trophy className="w-40 h-40 text-cyber-neon" />
             </div>
             
-            <h2 className="text-cyber-text text-xs uppercase tracking-[0.2em] font-mono mb-3 border-l-2 border-cyber-neon pl-3">Objetivo Principal</h2>
-            <h3 className="text-3xl font-bold text-white mb-8 leading-tight">{goal.title}</h3>
+            <h2 className="text-cyber-text text-xs uppercase tracking-[0.2em] font-mono mb-3 border-l-2 border-cyber-neon pl-3">Objetivo Primário</h2>
+            <h3 className="text-2xl md:text-3xl font-bold text-white mb-8 leading-tight">{goal.title}</h3>
             
             <div className="relative pt-1">
                 <div className="flex mb-2 items-center justify-between font-mono">
                     <div>
                         <span className="text-xs font-semibold inline-block py-1 px-2 uppercase rounded text-cyber-black bg-cyber-neon">
-                            Progresso Real
+                            Progresso Global
                         </span>
                     </div>
                     <div className="text-right">
@@ -186,7 +239,12 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent w-full h-full -translate-x-full animate-[shimmer_2s_infinite]"></div>
                     </div>
                 </div>
-                <p className="text-xs text-right text-gray-500 font-mono">META: {goal.target_value} | ATUAL: {Math.floor(goal.current_value)}</p>
+                <p className="text-xs text-right text-gray-500 font-mono">
+                    {goal.type === 'finance' 
+                        ? `ALVO: R$ ${goal.target_value.toLocaleString('pt-BR')} | ATUAL: R$ ${Math.floor(goal.current_value).toLocaleString('pt-BR')}`
+                        : `DIAS: 365 | FEITOS: ${Math.floor(goal.current_value)}`
+                    }
+                </p>
             </div>
         </div>
 
@@ -197,12 +255,14 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
                 Foco Laser (Hoje)
             </h2>
             
-            <div className={`flex-1 bg-cyber-dark border ${isCheckedToday ? 'border-cyber-neon shadow-[0_0_20px_rgba(0,255,156,0.1)]' : 'border-cyber-gray'} rounded-lg p-8 flex flex-col items-center justify-center text-center transition-all duration-500 relative overflow-hidden group`}>
+            <div className={`flex-1 bg-cyber-dark border ${isCheckedToday ? 'border-cyber-neon shadow-[0_0_20px_rgba(0,255,156,0.1)]' : 'border-cyber-gray'} rounded-lg p-8 flex flex-col items-center justify-center text-center transition-all duration-500 relative overflow-hidden group min-h-[300px]`}>
                 
                 {/* Scanner Line */}
                 {!isCheckedToday && <div className="absolute top-0 left-0 w-full h-1 bg-cyber-neon/30 animate-scanline pointer-events-none blur-sm z-0"></div>}
                 
-                <h4 className="text-2xl text-white font-medium mb-10 max-w-xs mx-auto leading-relaxed relative z-10">{goal.daily_action}</h4>
+                <h4 className="text-xl md:text-2xl text-white font-medium mb-10 max-w-sm mx-auto leading-relaxed relative z-10">
+                    {dailyMissionText}
+                </h4>
                 
                 <button 
                     onClick={handleCheckIn}
@@ -228,6 +288,14 @@ export const DashboardView: React.FC<Props> = ({ user }) => {
                 <p className={`mt-8 text-sm font-mono transition-colors relative z-10 ${isCheckedToday ? 'text-cyber-neon font-bold' : 'text-gray-500'}`}>
                     {isCheckedToday ? '/// MISSÃO CUMPRIDA. SYNC COMPLETE.' : '/// AGUARDANDO EXECUÇÃO'}
                 </p>
+                
+                {/* Health Rotation Indicator */}
+                {goal.type === 'body' && !isCheckedToday && (
+                    <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[10px] text-gray-600">
+                        <RefreshCw className="w-3 h-3" />
+                        <span>IA ROTATION ACTIVE</span>
+                    </div>
+                )}
             </div>
         </div>
 
